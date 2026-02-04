@@ -3,16 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>מערכת לימוד גמרא</title>
-    
-    <!-- טעינת ריאקט מהענן -->
+    <title>מערכת לימוד גמרא - LMS</title>
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
-    
-    <!-- עיצוב Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700&display=swap');
         body { font-family: 'Heebo', sans-serif; }
@@ -23,109 +18,115 @@
 
     <script type="text/babel">
         // ==========================================
-        // הגדרות חשובות
+        // 1. הגדרות מערכת
         // ==========================================
         
-        // --- שים כאן את הכתובת שלך מ-PYTHONANYWHERE ---
-        // חשוב: ללא לוכסן בסוף, וחייב להתחיל ב-HTTPS
-        const API_URL = "https://ubriga.pythonanywhere.com/"; 
+        // --- חובה לשנות לכתובת שלך ב-PYTHONANYWHERE ---
+        const API_URL = "https://ubriga.pythonanywhere.com"; 
         
         const { useState, useEffect, useMemo } = React;
 
         // ==========================================
-        // לוגיקה עסקית (חישובי דפים וגמטריה)
+        // 2. נתוני בסיס (גמטריה ומסכתות)
         // ==========================================
-
         const getHebrewNumber = (num) => {
             if (num <= 0) return "";
-            const letters = [
-                { val: 400, char: 'ת' }, { val: 300, char: 'ש' }, { val: 200, char: 'ר' },
-                { val: 100, char: 'ק' }, { val: 90, char: 'צ' }, { val: 80, char: 'פ' },
-                { val: 70, char: 'ע' }, { val: 60, char: 'ס' }, { val: 50, char: 'נ' },
-                { val: 40, char: 'מ' }, { val: 30, char: 'ל' }, { val: 20, char: 'כ' },
-                { val: 10, char: 'י' }, { val: 9, char: 'ט' }, { val: 8, char: 'ח' },
-                { val: 7, char: 'ז' }, { val: 6, char: 'ו' }, { val: 5, char: 'ה' },
-                { val: 4, char: 'ד' }, { val: 3, char: 'ג' }, { val: 2, char: 'ב' }, { val: 1, char: 'א' }
-            ];
+            const letters = [{v:400,c:'ת'},{v:300,c:'ש'},{v:200,c:'ר'},{v:100,c:'ק'},{v:90,c:'צ'},{v:80,c:'פ'},{v:70,c:'ע'},{v:60,c:'ס'},{v:50,c:'נ'},{v:40,c:'מ'},{v:30,c:'ל'},{v:20,c:'כ'},{v:10,c:'י'},{v:9,c:'ט'},{v:8,c:'ח'},{v:7,c:'ז'},{v:6,c:'ו'},{v:5,c:'ה'},{v:4,c:'ד'},{v:3,c:'ג'},{v:2,c:'ב'},{v:1,c:'א'}];
             let str = "", temp = num;
-            if (temp === 15) return "טו";
-            if (temp === 16) return "טז";
-            
-            for (let l of letters) {
-                while (temp >= l.val) { str += l.char; temp -= l.val; }
-            }
-            return str.length === 1 ? str + "'" : str.slice(0, -1) + '"' + str.slice(-1);
+            if (temp === 15) return "טו"; if (temp === 16) return "טז";
+            for (let l of letters) { while(temp >= l.v) { str += l.c; temp -= l.v; } }
+            return str.length === 1 ? str+"'" : str.slice(0,-1)+'"'+str.slice(-1);
         };
 
-        const generatePages = (pageCount) => {
-            const pages = [];
-            for (let i = 2; i < pageCount + 2; i++) {
-                const heb = getHebrewNumber(i);
-                pages.push({ id: `${i}a`, label: `דף ${heb} ע"א` });
-                pages.push({ id: `${i}b`, label: `דף ${heb} ע"ב` });
+        const generatePages = (cnt) => {
+            const p = [];
+            for(let i=2; i<cnt+2; i++) {
+                const h = getHebrewNumber(i);
+                p.push({id:`${i}a`, label:`דף ${h} ע"א`});
+                p.push({id:`${i}b`, label:`דף ${h} ע"ב`});
             }
-            return pages;
+            return p;
         };
 
         const SHAS_DATA = [
-            { name: "זרעים", books: [{ n: "ברכות", p: 63 }] },
-            { name: "מועד", books: [{ n: "שבת", p: 156 }, { n: "עירובין", p: 104 }, { n: "פסחים", p: 120 }, { n: "שקלים", p: 21 }, { n: "יומא", p: 87 }, { n: "סוכה", p: 55 }, { n: "ביצה", p: 39 }, { n: "ראש השנה", p: 34 }, { n: "תענית", p: 30 }, { n: "מגילה", p: 31 }, { n: "מועד קטן", p: 28 }, { n: "חגיגה", p: 26 }] },
-            { name: "נשים", books: [{ n: "יבמות", p: 121 }, { n: "כתובות", p: 111 }, { n: "נדרים", p: 90 }, { n: "נזיר", p: 65 }, { n: "סוטה", p: 48 }, { n: "גיטין", p: 89 }, { n: "קידושין", p: 81 }] },
-            { name: "נזיקין", books: [{ n: "בבא קמא", p: 118 }, { n: "בבא מציעא", p: 118 }, { n: "בבא בתרא", p: 175 }, { n: "סנהדרין", p: 112 }, { n: "מכות", p: 23 }, { n: "שבועות", p: 48 }, { n: "עבודה זרה", p: 75 }, { n: "הוריות", p: 13 }] },
-            { name: "קדשים", books: [{ n: "זבחים", p: 119 }, { n: "מנחות", p: 109 }, { n: "חולין", p: 141 }, { n: "בכורות", p: 60 }, { n: "ערכין", p: 33 }, { n: "תמורה", p: 33 }, { n: "כריתות", p: 27 }, { n: "מעילה", p: 20 }, { n: "קינים", p: 3 }, { n: "מידות", p: 4 }, { n: "תמיד", p: 9 }] },
-            { name: "טהרות", books: [{ n: "נידה", p: 72 }] }
+            { name: "זרעים", books: [{n:"ברכות",p:63}] },
+            { name: "מועד", books: [{n:"שבת",p:156},{n:"עירובין",p:104},{n:"פסחים",p:120},{n:"שקלים",p:21},{n:"יומא",p:87},{n:"סוכה",p:55},{n:"ביצה",p:39},{n:"ראש השנה",p:34},{n:"תענית",p:30},{n:"מגילה",p:31},{n:"מועד קטן",p:28},{n:"חגיגה",p:26}] },
+            { name: "נשים", books: [{n:"יבמות",p:121},{n:"כתובות",p:111},{n:"נדרים",p:90},{n:"נזיר",p:65},{n:"סוטה",p:48},{n:"גיטין",p:89},{n:"קידושין",p:81}] },
+            { name: "נזיקין", books: [{n:"בבא קמא",p:118},{n:"בבא מציעא",p:118},{n:"בבא בתרא",p:175},{n:"סנהדרין",p:112},{n:"מכות",p:23},{n:"שבועות",p:48},{n:"עבודה זרה",p:75},{n:"הוריות",p:13}] },
+            { name: "קדשים", books: [{n:"זבחים",p:119},{n:"מנחות",p:109},{n:"חולין",p:141},{n:"בכורות",p:60},{n:"ערכין",p:33},{n:"תמורה",p:33},{n:"כריתות",p:27},{n:"מעילה",p:20},{n:"קינים",p:3},{n:"מידות",p:4},{n:"תמיד",p:9}] },
+            { name: "טהרות", books: [{n:"נידה",p:72}] }
         ];
 
-        const INITIAL_TRACKS = [{
-            id: 'shas', title: 'הש"ס הבבלי',
-            sections: SHAS_DATA.map((s, i) => ({
-                id: `s_${i}`, title: `סדר ${s.name}`,
-                books: s.books.map((b, bi) => ({
-                    id: `b_${s.name}_${bi}`, title: `מסכת ${b.n}`,
-                    totalCount: b.p, units: generatePages(b.p)
-                }))
-            }))
-        }];
+        const INITIAL_TRACKS = [{ id:'shas', title:'הש"ס הבבלי', sections: SHAS_DATA.map((s,i)=>({ id:`s_${i}`, title:s.name, books:s.books.map((b,bi)=>({ id:`b_${s.name}_${bi}`, title:`מסכת ${b.n}`, totalCount:b.p, units:generatePages(b.p) })) })) }];
 
         // ==========================================
-        // רכיבי UI
+        // 3. רכיבי React
         // ==========================================
 
-        const ProgressBar = ({ current, total, color, label }) => {
-            const pct = Math.round((current / total) * 100) || 0;
-            const colors = { blue: "bg-blue-600", emerald: "bg-emerald-600", amber: "bg-amber-500" };
+        const AdminPanel = () => {
+            const [users, setUsers] = useState([]);
+            const [formData, setForm] = useState({username:'', password:'', role:'student'});
+
+            useEffect(() => { fetch(`${API_URL}/api/users`).then(r=>r.json()).then(setUsers); }, []);
+
+            const addUser = () => {
+                if(!formData.username || !formData.password) return;
+                fetch(`${API_URL}/api/users`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify(formData)
+                }).then(r=>r.json()).then(d => {
+                    if(d.ok) {
+                        alert("משתמש נוסף בהצלחה!");
+                        setForm({username:'', password:'', role:'student'});
+                        fetch(`${API_URL}/api/users`).then(r=>r.json()).then(setUsers);
+                    } else { alert(d.error); }
+                });
+            };
+
             return (
-                <div className="mb-4">
-                    <div className="flex justify-between text-sm mb-1 text-gray-600 font-medium">
-                        <span>{label}</span>
-                        <span>{pct}% ({current}/{total})</span>
+                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                    <h2 className="text-xl font-bold mb-4">ניהול משתמשים (Admin)</h2>
+                    <div className="flex flex-col md:flex-row gap-3 mb-6 bg-slate-50 p-4 rounded-lg">
+                        <input className="border p-2 rounded flex-1" placeholder="שם משתמש" value={formData.username} onChange={e=>setForm({...formData, username:e.target.value})} />
+                        <input className="border p-2 rounded flex-1" placeholder="סיסמה" type="password" value={formData.password} onChange={e=>setForm({...formData, password:e.target.value})} />
+                        <select className="border p-2 rounded" value={formData.role} onChange={e=>setForm({...formData, role:e.target.value})}>
+                            <option value="student">תלמיד</option>
+                            <option value="group_admin">מנהל קבוצה</option>
+                            <option value="admin">אדמין ראשי</option>
+                        </select>
+                        <button onClick={addUser} className="bg-emerald-600 text-white px-6 py-2 rounded hover:bg-emerald-700 font-bold">+</button>
                     </div>
-                    <div className="w-full bg-gray-200 rounded-full h-2.5">
-                        <div className={`h-2.5 rounded-full transition-all duration-500 ${colors[color]}`} style={{ width: `${pct}%` }}></div>
-                    </div>
+                    <table className="w-full text-right text-sm">
+                        <thead className="bg-gray-100"><tr><th className="p-2">שם</th><th className="p-2">תפקיד</th></tr></thead>
+                        <tbody>
+                            {users.map(u => <tr key={u.id} className="border-b"><td className="p-2">{u.username}</td><td className="p-2">{u.role}</td></tr>)}
+                        </tbody>
+                    </table>
                 </div>
             );
         };
 
         const App = () => {
-            const [user, setUser] = useState(null);
-            const [tracks, setTracks] = useState(INITIAL_TRACKS);
+            const [user, setUser] = useState(null); // Auth State
+            const [view, setView] = useState('student'); // 'student' or 'admin'
+            
+            // Login States
+            const [loginData, setLoginData] = useState({username:'', password:''});
+            const [loginError, setLoginError] = useState('');
+
+            // Data States
+            const [tracks] = useState(INITIAL_TRACKS);
             const [progress, setProgress] = useState({});
             const [activeTrackId, setTrackId] = useState(INITIAL_TRACKS[0].id);
             const [activeSecId, setSecId] = useState(INITIAL_TRACKS[0].sections[0].id);
             const [activeBookId, setBookId] = useState(INITIAL_TRACKS[0].sections[0].books[0].id);
 
-            // טעינת נתונים מהשרת
+            // Fetch progress on login
             useEffect(() => {
                 if (user) {
-                    fetch(`${API_URL}/api/get_progress?user_id=${user.id}`)
-                        .then(r => r.json())
-                        .then(keys => {
-                            const newProg = {};
-                            keys.forEach(k => newProg[k] = true);
-                            setProgress(newProg);
-                        })
-                        .catch(err => console.error("Error fetching:", err));
+                    fetch(`${API_URL}/api/get_progress?user_id=${user.id}`).then(r=>r.json()).then(keys => {
+                        const p = {}; keys.forEach(k=>p[k]=true); setProgress(p);
+                    });
                 }
             }, [user]);
 
@@ -133,115 +134,141 @@
             const activeSec = activeTrack.sections.find(s => s.id === activeSecId);
             const activeBook = activeSec.books.find(b => b.id === activeBookId);
 
+            // Stats Logic
             const stats = useMemo(() => {
                 let gT=0, gD=0, bT=0, bD=0;
                 tracks.forEach(t => t.sections.forEach(s => s.books.forEach(b => b.units.forEach(u => {
-                    const key = `${t.id}_${b.id}_${u.id}`;
-                    const isDone = progress[key];
-                    gT++; if(isDone) gD++;
-                    if(b.id === activeBookId) { bT++; if(isDone) bD++; }
+                    const k = `${t.id}_${b.id}_${u.id}`;
+                    gT++; if(progress[k]) gD++;
+                    if(b.id===activeBookId) { bT++; if(progress[k]) bD++; }
                 }))));
-                return { gT, gD, bT, bD };
+                return {gT,gD,bT,bD};
             }, [progress, activeBookId]);
 
-            const toggle = (unitId) => {
-                const key = `${activeTrackId}_${activeBookId}_${unitId}`;
-                
-                // עדכון אופטימי בממשק
-                setProgress(prev => ({ ...prev, [key]: !prev[key] }));
+            // Actions
+            const handleLogin = () => {
+                fetch(`${API_URL}/api/login`, {
+                    method: 'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify(loginData)
+                }).then(r=>r.json()).then(d => {
+                    if(d.ok) { setUser(d.user); setLoginError(''); }
+                    else { setLoginError(d.error); }
+                }).catch(()=>setLoginError("שגיאת תקשורת"));
+            };
 
-                // שליחה לשרת
+            const toggle = (unitId, forceState=null) => {
+                const key = `${activeTrackId}_${activeBookId}_${unitId}`;
+                const newState = forceState !== null ? forceState : !progress[key];
+                
+                // Optimistic UI Update
+                setProgress(prev => ({ ...prev, [key]: newState }));
+
+                // Server Sync
                 fetch(`${API_URL}/api/toggle_page`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ user_id: user.id, key: key })
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({ user_id:user.id, key, force_state: forceState })
                 });
             };
 
+            const bulkAction = (state) => {
+                if(!confirm(state ? "לסמן את כל המסכת כנלמדה?" : "לנקות את כל הסימונים במסכת?")) return;
+                activeBook.units.forEach(u => toggle(u.id, state));
+            };
+
+            // --- מסך כניסה ---
             if (!user) {
                 return (
                     <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-                        <div className="bg-white p-8 rounded-2xl shadow-xl text-center max-w-md w-full">
-                            <div className="text-4xl mb-4">📖</div>
-                            <h1 className="text-2xl font-bold mb-2">מערכת "עץ חיים"</h1>
-                            <p className="text-gray-500 mb-6">בחר משתמש לכניסה</p>
-                            <button onClick={() => setUser({id: 'student1', name: 'יוסי כהן', role: 'student'})} className="w-full bg-blue-600 text-white py-3 rounded-lg mb-3 hover:bg-blue-700">כניסת תלמיד</button>
-                            <button onClick={() => setUser({id: 'admin1', name: 'הרב לוי', role: 'admin'})} className="w-full bg-emerald-600 text-white py-3 rounded-lg hover:bg-emerald-700">כניסת מנהל</button>
+                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+                            <h1 className="text-2xl font-bold mb-6 text-blue-800">מערכת "עץ חיים"</h1>
+                            <input className="w-full border p-3 rounded-lg mb-3 text-right" placeholder="שם משתמש" value={loginData.username} onChange={e=>setLoginData({...loginData, username:e.target.value})} />
+                            <input className="w-full border p-3 rounded-lg mb-3 text-right" type="password" placeholder="סיסמה" value={loginData.password} onChange={e=>setLoginData({...loginData, password:e.target.value})} />
+                            <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">כניסה למערכת</button>
+                            {loginError && <p className="text-red-500 mt-4 text-sm">{loginError}</p>}
+                            <p className="text-xs text-gray-400 mt-6">כניסה ראשונית: admin / 123456</p>
                         </div>
                     </div>
                 );
             }
 
+            // --- האפליקציה הראשית ---
             return (
-                <div className="min-h-screen pb-10">
-                    <header className="bg-white border-b sticky top-0 z-10 px-4 py-3 flex justify-between items-center shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <span className="text-2xl">📖</span>
-                            <span className="font-bold text-xl hidden sm:inline">עץ חיים LMS</span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <div className="text-left text-sm">
-                                <div className="font-bold">{user.name}</div>
-                                <div className="text-gray-500">{user.role === 'admin' ? 'מנהל' : 'תלמיד'}</div>
-                            </div>
-                            <button onClick={() => setUser(null)} className="text-red-500 text-xl" title="התנתק">🚪</button>
-                        </div>
+                <div className="min-h-screen pb-20">
+                    {/* ניווט עליון */}
+                    <header className="bg-white border-b sticky top-0 z-20 px-4 py-3 shadow-sm flex justify-between items-center">
+                        <div className="font-bold text-lg text-blue-900">עץ חיים LMS</div>
+                        <nav className="flex items-center gap-4">
+                            <button onClick={()=>setView('student')} className={`text-sm font-medium ${view==='student'?'text-blue-600':'text-gray-500'}`}>לוח תלמיד</button>
+                            {user.role === 'admin' && (
+                                <button onClick={()=>setView('admin')} className={`text-sm font-medium ${view==='admin'?'text-blue-600':'text-gray-500'}`}>ניהול מערכת</button>
+                            )}
+                            <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                            <span className="text-xs font-bold">{user.name}</span>
+                            <button onClick={()=>setUser(null)} className="text-red-500" title="יציאה">🚪</button>
+                        </nav>
                     </header>
 
                     <main className="max-w-7xl mx-auto p-4 space-y-6">
-                        {/* כרטיסי סטטיסטיקה */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="bg-white p-5 rounded-xl shadow-sm border">
-                                <h3 className="font-bold text-gray-700 mb-2">📊 התקדמות במסכת {activeBook.title}</h3>
-                                <ProgressBar current={stats.bD} total={stats.bT} color="blue" label="דפים שהושלמו" />
-                            </div>
-                            <div className="bg-white p-5 rounded-xl shadow-sm border">
-                                <h3 className="font-bold text-gray-700 mb-2">🍰 סיום הש"ס</h3>
-                                <div className="text-3xl font-bold text-slate-800">
-                                    {stats.gT - stats.gD} <span className="text-sm font-normal text-gray-500">דפים נותרו</span>
+                        {/* תצוגת אדמין */}
+                        {view === 'admin' && user.role === 'admin' && <AdminPanel />}
+
+                        {/* תצוגת תלמיד */}
+                        {view === 'student' && (
+                            <>
+                                {/* סטטיסטיקה */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                        <div className="text-sm text-gray-500 mb-1">התקדמות במסכת {activeBook.title}</div>
+                                        <div className="text-2xl font-bold text-blue-600">{stats.bD} / {stats.bT} דפים</div>
+                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-blue-600 h-2 rounded-full" style={{width:`${(stats.bD/stats.bT)*100}%`}}></div></div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                        <div className="text-sm text-gray-500 mb-1">נותרו לסיום הש"ס</div>
+                                        <div className="text-2xl font-bold text-amber-600">{stats.gT - stats.gD} דפים</div>
+                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-amber-500 h-2 rounded-full" style={{width:`${(stats.gD/stats.gT)*100}%`}}></div></div>
+                                    </div>
                                 </div>
-                                <ProgressBar current={stats.gD} total={stats.gT} color="amber" label="סה״כ הושלמו" />
-                            </div>
-                        </div>
 
-                        {/* סרגל ניווט */}
-                        <div className="bg-white p-4 rounded-xl shadow-sm border sticky top-20 z-10 flex flex-col md:flex-row gap-4">
-                            <select className="bg-slate-50 border p-2.5 rounded-lg w-full" value={activeSecId} onChange={e => {
-                                const newS = activeTrack.sections.find(s => s.id === e.target.value);
-                                setSecId(e.target.value);
-                                setBookId(newS.books[0].id);
-                            }}>
-                                {activeTrack.sections.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-                            </select>
-                            <select className="bg-slate-50 border p-2.5 rounded-lg w-full" value={activeBookId} onChange={e => setBookId(e.target.value)}>
-                                {activeSec.books.map(b => <option key={b.id} value={b.id}>{b.title}</option>)}
-                            </select>
-                        </div>
+                                {/* בחירת מסכת */}
+                                <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row gap-3 sticky top-16 z-10">
+                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeSecId} onChange={e=>{
+                                        const s = activeTrack.sections.find(x=>x.id===e.target.value); setSecId(s.id); setBookId(s.books[0].id);
+                                    }}>
+                                        {activeTrack.sections.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}
+                                    </select>
+                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeBookId} onChange={e=>setBookId(e.target.value)}>
+                                        {activeSec.books.map(b=><option key={b.id} value={b.id}>{b.title}</option>)}
+                                    </select>
+                                </div>
 
-                        {/* גריד דפים */}
-                        <div className="bg-white p-6 rounded-xl shadow-sm border">
-                            <h2 className="text-xl font-bold mb-4 border-b pb-2">{activeBook.title}</h2>
-                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                                {activeBook.units.map(u => {
-                                    const key = `${activeTrackId}_${activeBookId}_${u.id}`;
-                                    const isDone = progress[key];
-                                    return (
-                                        <button key={u.id} onClick={() => toggle(u.id)} className={`
-                                            relative p-3 rounded-lg border text-center transition-all duration-200
-                                            ${isDone ? 'bg-blue-600 border-blue-600 text-white shadow-md transform scale-105' : 'bg-slate-50 hover:border-blue-400'}
-                                        `}>
-                                            <div className="text-sm font-medium">{u.label}</div>
-                                            {isDone && <div className="absolute -top-2 -right-2 bg-white text-blue-600 rounded-full px-1 shadow text-xs">✓</div>}
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
+                                {/* אזור דפים ופעולות גורפות */}
+                                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                                    <div className="flex justify-between items-center mb-6 border-b pb-4">
+                                        <h2 className="text-xl font-bold">{activeBook.title}</h2>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>bulkAction(true)} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded hover:bg-emerald-200 font-bold">✅ סמן הכל</button>
+                                            <button onClick={()=>bulkAction(false)} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded hover:bg-gray-200">♻️ נקה הכל</button>
+                                        </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                        {activeBook.units.map(u => {
+                                            const k = `${activeTrackId}_${activeBookId}_${u.id}`;
+                                            const done = progress[k];
+                                            return (
+                                                <button key={u.id} onClick={()=>toggle(u.id)} className={`p-3 rounded-lg border text-sm font-medium transition-all ${done ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-slate-50 text-gray-600 hover:border-blue-400'}`}>
+                                                    {u.label} {done && "✓"}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </>
+                        )}
                     </main>
                 </div>
             );
         };
-
+        
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
