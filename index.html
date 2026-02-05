@@ -207,4 +207,212 @@
             const [view, setView] = useState('student');
             
             const [loginData, setLoginData] = useState({username:'', password:''});
-            const [loginError, setLoginError] = useState(
+            const [loginError, setLoginError] = useState('');
+
+            const [tracks] = useState(INITIAL_TRACKS);
+            const [progress, setProgress] = useState({});
+            const [activeTrackId, setTrackId] = useState(INITIAL_TRACKS[0].id);
+            const [activeSecId, setSecId] = useState(INITIAL_TRACKS[0].sections[0].id);
+            const [activeBookId, setBookId] = useState(INITIAL_TRACKS[0].sections[0].books[0].id);
+
+            const [isDragging, setIsDragging] = useState(false);
+            const [dragState, setDragState] = useState(null);
+
+            useEffect(() => {
+                if (user) {
+                    fetch(`${API_URL}/api/get_progress?user_id=${user.id}`).then(r=>r.json()).then(keys => {
+                        const p = {}; keys.forEach(k=>p[k]=true); setProgress(p);
+                    });
+                }
+            }, [user]);
+
+            const activeTrack = tracks.find(t => t.id === activeTrackId);
+            const activeSec = activeTrack.sections.find(s => s.id === activeSecId);
+            const activeBook = activeSec.books.find(b => b.id === activeBookId);
+
+            const stats = useMemo(() => {
+                let gT=0, gD=0, bT=0, bD=0;
+                tracks.forEach(t => t.sections.forEach(s => s.books.forEach(b => b.units.forEach(u => {
+                    const k = `${t.id}_${b.id}_${u.id}`;
+                    gT++; if(progress[k]) gD++;
+                    if(b.id===activeBookId) { bT++; if(progress[k]) bD++; }
+                }))));
+                return {gT,gD,bT,bD};
+            }, [progress, activeBookId, tracks]);
+
+            const handleLogin = () => {
+                fetch(`${API_URL}/api/login`, {
+                    method: 'POST', headers:{'Content-Type':'application/json'},
+                    body: JSON.stringify(loginData)
+                }).then(r=>r.json()).then(d => {
+                    if(d.ok) { setUser(d.user); setLoginError(''); }
+                    else { setLoginError(d.error); }
+                }).catch(()=>setLoginError("שגיאת תקשורת"));
+            };
+
+            const toggle = (unitId, forceState=null) => {
+                const key = `${activeTrackId}_${activeBookId}_${unitId}`;
+                const newState = forceState !== null ? forceState : !progress[key];
+                
+                setProgress(prev => ({ ...prev, [key]: newState }));
+
+                fetch(`${API_URL}/api/toggle_page`, {
+                    method:'POST', headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({ user_id:user.id, key, force_state: newState })
+                });
+            };
+
+            const bulkAction = (state) => {
+                if(!confirm(state ? `לסמן את כל מסכת ${activeBook.title} כנלמדה?` : `לנקות את כל הסימונים במסכת ${activeBook.title}?`)) return;
+                
+                const updates = {};
+                activeBook.units.forEach(u => {
+                    const key = `${activeTrackId}_${activeBookId}_${u.id}`;
+                    updates[key] = state;
+                    fetch(`${API_URL}/api/toggle_page`, {
+                        method:'POST', headers:{'Content-Type':'application/json'},
+                        body:JSON.stringify({ user_id:user.id, key, force_state: state })
+                    });
+                });
+                setProgress(prev => ({ ...prev, ...updates }));
+            };
+
+            const handleMouseDown = (unitId, currentState) => {
+                setIsDragging(true);
+                setDragState(!currentState);
+                toggle(unitId, !currentState);
+            };
+
+            const handleMouseEnter = (unitId) => {
+                if (isDragging) {
+                    toggle(unitId, dragState);
+                }
+            };
+
+            const handleMouseUp = () => {
+                setIsDragging(false);
+                setDragState(null);
+            };
+
+            useEffect(() => {
+                window.addEventListener('mouseup', handleMouseUp);
+                return () => window.removeEventListener('mouseup', handleMouseUp);
+            }, []);
+
+            if (!user) {
+                return (
+                    <div className="flex flex-col min-h-screen">
+                        <div className="flex-1 flex items-center justify-center bg-slate-100 p-4">
+                            <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
+                                <h1 className="text-2xl font-bold mb-6 text-blue-800">מערכת "עץ חיים"</h1>
+                                <input 
+                                    className="w-full border p-3 rounded-lg mb-3 text-right" 
+                                    placeholder="שם משתמש" 
+                                    value={loginData.username} 
+                                    onChange={e=>setLoginData({...loginData, username:e.target.value})}
+                                    onKeyDown={e => e.key === 'Enter' && handleLogin()} 
+                                />
+                                <input 
+                                    className="w-full border p-3 rounded-lg mb-3 text-right" 
+                                    type="password" 
+                                    placeholder="סיסמה" 
+                                    value={loginData.password} 
+                                    onChange={e=>setLoginData({...loginData, password:e.target.value})}
+                                    onKeyDown={e => e.key === 'Enter' && handleLogin()} 
+                                />
+                                <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">כניסה למערכת</button>
+                                {loginError && <p className="text-red-500 mt-4 text-sm">{loginError}</p>}
+                            </div>
+                        </div>
+                        <Footer />
+                    </div>
+                );
+            }
+
+            return (
+                <div className="flex flex-col min-h-screen select-none">
+                    <header className="bg-white border-b sticky top-0 z-20 px-4 py-3 shadow-sm flex justify-between items-center">
+                        <div className="flex flex-col">
+                            <span className="font-bold text-lg text-blue-900">עץ חיים LMS</span>
+                            <span className="text-[10px] text-gray-400">by OrelAI</span>
+                        </div>
+                        <nav className="flex items-center gap-4">
+                            <button onClick={()=>setView('student')} className={`text-sm font-medium ${view==='student'?'text-blue-600':'text-gray-500'}`}>לוח תלמיד</button>
+                            {user.role === 'admin' && (
+                                <button onClick={()=>setView('admin')} className={`text-sm font-medium ${view==='admin'?'text-blue-600':'text-gray-500'}`}>ניהול מערכת</button>
+                            )}
+                            <div className="h-4 w-px bg-gray-300 mx-1"></div>
+                            <span className="text-xs font-bold">{user.name}</span>
+                            <button onClick={()=>setUser(null)} className="text-red-500" title="יציאה">🚪</button>
+                        </nav>
+                    </header>
+
+                    <main className="max-w-7xl mx-auto p-4 space-y-6 flex-1 w-full">
+                        {view === 'admin' && user.role === 'admin' && <AdminPanel />}
+
+                        {view === 'student' && (
+                            <React.Fragment>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                        <div className="text-sm text-gray-500 mb-1">התקדמות במסכת {activeBook.title}</div>
+                                        <div className="text-2xl font-bold text-blue-600">{stats.bD} / {stats.bT} דפים</div>
+                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-blue-600 h-2 rounded-full" style={{width:`${(stats.bD/stats.bT)*100}%`}}></div></div>
+                                    </div>
+                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
+                                        <div className="text-sm text-gray-500 mb-1">נותרו לסיום הש"ס</div>
+                                        <div className="text-2xl font-bold text-amber-600">{stats.gT - stats.gD} דפים</div>
+                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-amber-500 h-2 rounded-full" style={{width:`${(stats.gD/stats.gT)*100}%`}}></div></div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row gap-3 sticky top-16 z-10">
+                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeSecId} onChange={e=>{
+                                        const s = activeTrack.sections.find(x=>x.id===e.target.value); setSecId(s.id); setBookId(s.books[0].id);
+                                    }}>
+                                        {activeTrack.sections.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}
+                                    </select>
+                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeBookId} onChange={e=>setBookId(e.target.value)}>
+                                        {activeSec.books.map(b=><option key={b.id} value={b.id}>{b.title}</option>)}
+                                    </select>
+                                </div>
+
+                                <div className="bg-white p-6 rounded-xl border shadow-sm">
+                                    <div className="flex justify-between items-center mb-6 border-b pb-4">
+                                        <h2 className="text-xl font-bold">{activeBook.title}</h2>
+                                        <div className="flex gap-2">
+                                            <button onClick={()=>bulkAction(true)} className="text-xs bg-emerald-100 text-emerald-700 px-3 py-1.5 rounded hover:bg-emerald-200 font-bold">✅ סיימתי מסכת</button>
+                                            <button onClick={()=>bulkAction(false)} className="text-xs bg-gray-100 text-gray-600 px-3 py-1.5 rounded hover:bg-gray-200">♻️ נקה הכל</button>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-gray-400 mb-2 text-center">ניתן לגרור את העכבר כדי לסמן דפים ברצף</div>
+                                    <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                                        {activeBook.units.map(u => {
+                                            const k = `${activeTrackId}_${activeBookId}_${u.id}`;
+                                            const done = progress[k];
+                                            return (
+                                                <button 
+                                                    key={u.id} 
+                                                    onMouseDown={() => handleMouseDown(u.id, done)}
+                                                    onMouseEnter={() => handleMouseEnter(u.id)}
+                                                    className={`page-btn p-3 rounded-lg border text-sm font-medium ${done ? 'bg-blue-600 text-white border-blue-600 shadow-md transform scale-105' : 'bg-slate-50 text-gray-600 hover:border-blue-400'}`}
+                                                >
+                                                    {u.label} {done && "✓"}
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            </React.Fragment>
+                        )}
+                    </main>
+
+                    <Footer />
+                </div>
+            );
+        };
+        
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
