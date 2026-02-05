@@ -185,7 +185,6 @@
                             <input className="w-full border p-3 rounded-lg mb-3 text-right" type="password" placeholder="סיסמה" value={loginData.password} onChange={e=>setLoginData({...loginData, password:e.target.value})} />
                             <button onClick={handleLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">כניסה למערכת</button>
                             {loginError && <p className="text-red-500 mt-4 text-sm">{loginError}</p>}
-                            <p className="text-xs text-gray-400 mt-6">כניסה ראשונית: admin / 123456</p>
                         </div>
                     </div>
                 );
