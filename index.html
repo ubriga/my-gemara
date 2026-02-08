@@ -338,6 +338,12 @@
             // לוגין
             const doLogin = () => fetch(`${API_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(loginData)}).then(r=>r.json()).then(d=>{if(d.ok){setUser(d.user);setLoginError('')}else setLoginError(d.error)});
 
+            // יציאה בטוחה
+            const handleLogout = () => {
+                setUser(null);
+                setLoginData({username:'', password:''});
+            };
+
             if(!user) return (
                 <div className="flex flex-col min-h-screen">
                     <div className="flex-1 flex items-center justify-center bg-slate-100 p-4">
@@ -360,7 +366,7 @@
                         <nav className="flex items-center gap-4">
                             {user.role === 'admin' && <button onClick={()=>setView(view==='admin'?'student':'admin')} className="text-sm font-bold text-blue-600">{view==='admin'?'חזרה ללומד':'ממשק מנהל'}</button>}
                             <span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded">{user.name}</span>
-                            <button onClick={()=>setUser(null)} className="text-red-500" title="יציאה">🚪</button>
+                            <button onClick={handleLogout} className="text-red-500" title="יציאה">🚪</button>
                         </nav>
                     </header>
                     <main className="max-w-7xl mx-auto p-4 w-full flex-1">
