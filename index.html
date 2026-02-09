@@ -8,6 +8,8 @@
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
     <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Recaptcha V3 -->
+    <script src="https://www.google.com/recaptcha/api.js?render=YOUR_SITE_KEY_HERE"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;700&display=swap');
         body { font-family: 'Heebo', sans-serif; user-select: none; }
@@ -26,6 +28,8 @@
 
     <script type="text/babel">
         const API_URL = "https://ubriga.pythonanywhere.com"; // <--- ודא שהכתובת נכונה!
+        const RECAPTCHA_SITE_KEY = "YOUR_SITE_KEY_HERE"; // <--- שנה למפתח האתר שלך!
+
         const { useState, useEffect, useMemo } = React;
 
         // --- עזרים ---
@@ -231,193 +235,8 @@
                         <button onClick={()=>setTab('stats')} className={`pb-2 px-4 font-bold ${tab==='stats' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}>דוחות התקדמות</button>
                         <button onClick={()=>setTab('users')} className={`pb-2 px-4 font-bold ${tab==='users' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-gray-500'}`}>ניהול משתמשים</button>
                     </div>
-                    {tab === 'stats' ? <AdminStats /> : <AdminUserManagement users={users} fetchUsers={fetchUsers} />}
-                </div>
-            );
-        };
-
-        // --- קומפוננטות תלמיד ---
-
-        const MishnaBookView = ({ book, progress, toggle }) => {
-            const chapters = useMemo(() => {
-                const map = {};
-                book.units.forEach(u => {
-                    if(!map[u.chapterId]) map[u.chapterId] = { id: u.chapterId, title: u.chapterTitle, units: [] };
-                    map[u.chapterId].units.push(u);
-                });
-                return Object.values(map);
-            }, [book]);
-
-            const [openChapter, setOpenChapter] = useState(null);
-
-            return (
-                <div className="space-y-2">
-                    {chapters.map(chapter => {
-                        const completed = chapter.units.filter(u => progress[`${book.id}_${u.id}`]).length;
-                        const isFull = completed === chapter.units.length;
-                        const isOpen = openChapter === chapter.id;
-
-                        return (
-                            <div key={chapter.id} className="border rounded-lg bg-white overflow-hidden">
-                                <button onClick={() => setOpenChapter(isOpen?null:chapter.id)} className={`w-full flex justify-between p-3 hover:bg-gray-50 ${isFull?'bg-emerald-50 text-emerald-800':''}`}>
-                                    <span className="font-bold">{chapter.title}</span>
-                                    <div className="flex gap-2 text-sm text-gray-500">
-                                        <span>{completed}/{chapter.units.length}</span>
-                                        <span>{isOpen?'▼':'◀'}</span>
-                                    </div>
-                                </button>
-                                <div className={`chapter-content bg-slate-50 ${isOpen?'open':''}`}>
-                                    <div className="p-3 grid grid-cols-3 sm:grid-cols-6 gap-2">
-                                        {chapter.units.map(u => {
-                                             const k = `${book.id}_${u.id}`;
-                                             return <button key={u.id} onClick={()=>toggle(k)} className={`p-2 rounded border text-sm ${progress[k]?'bg-emerald-600 text-white':'bg-white'}`}>{u.label.replace('משנה ','')}</button>;
-                                        })}
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            );
-        };
-
-        const App = () => {
-            const [user, setUser] = useState(null);
-            const [view, setView] = useState('student');
-            const [loginData, setLoginData] = useState({username:'', password:''});
-            const [loginError, setLoginError] = useState('');
-            
-            const [selectedTrack, setSelectedTrack] = useState(ALL_TRACKS[0]);
-            const [activeSecId, setSecId] = useState(ALL_TRACKS[0].sections[0].id);
-            const [activeBookId, setBookId] = useState(ALL_TRACKS[0].sections[0].books[0].id);
-            const [progress, setProgress] = useState({});
-
-            // טעינת נתונים
-            useEffect(() => {
-                if (user) fetch(`${API_URL}/api/get_progress?user_id=${user.id}`).then(r=>r.json()).then(k=>{const p={};k.forEach(x=>p[x]=true);setProgress(p)});
-            }, [user]);
-
-            // ניהול מסלול פעיל
-            const activeTrack = selectedTrack;
-            const activeSec = activeTrack.sections.find(s=>s.id===activeSecId) || activeTrack.sections[0];
-            const activeBook = activeSec.books.find(b=>b.id===activeBookId) || activeSec.books[0];
-
-            // סטטיסטיקות
-            const stats = useMemo(() => {
-                // מקומי (מסכת)
-                const bookTotal = activeBook.units.length;
-                const bookDone = activeBook.units.filter(u => progress[`${activeBook.id}_${u.id}`]).length;
-                
-                // גלובלי (כל המסלול שנבחר)
-                const trackPrefix = selectedTrack.id === 'gemara' ? 'gb_' : 'mb_';
-                const trackTotal = selectedTrack.id === 'gemara' ? GEMARA_TOTAL : MISHNA_TOTAL;
-                // ספירה גסה של כל המפתחות שמתאימים למסלול
-                const trackDone = Object.keys(progress).filter(k => k.includes(trackPrefix)).length;
-
-                return { bookTotal, bookDone, trackTotal, trackDone };
-            }, [progress, activeBook, selectedTrack]);
-
-            const changeTrack = (tid) => {
-                const t = ALL_TRACKS.find(x=>x.id===tid);
-                setSelectedTrack(t); setSecId(t.sections[0].id); setBookId(t.sections[0].books[0].id);
-            };
-
-            const toggleKey = (k, f=null) => {
-                const ns = f!==null?f:!progress[k];
-                setProgress(p=>({...p,[k]:ns}));
-                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:k,force_state:ns})});
-            };
-
-            // גרירה
-            const [isDragging, setIsDragging] = useState(false);
-            const [dragState, setDragState] = useState(null);
-            const handleMD = (uid,d) => { if(activeBook.type==='pages'){ setIsDragging(true); setDragState(!d); toggleKey(`${activeBook.id}_${uid}`); }};
-            const handleME = (uid) => { if(isDragging && activeBook.type==='pages') toggleKey(`${activeBook.id}_${uid}`, dragState); };
-            useEffect(()=>{const u=()=>setIsDragging(false);window.addEventListener('mouseup',u);return()=>window.removeEventListener('mouseup',u)},[]);
-
-            // לוגין
-            const doLogin = () => fetch(`${API_URL}/api/login`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(loginData)}).then(r=>r.json()).then(d=>{if(d.ok){setUser(d.user);setLoginError('')}else setLoginError(d.error)});
-
-            // יציאה בטוחה
-            const handleLogout = () => {
-                setUser(null);
-                setLoginData({username:'', password:''});
-            };
-
-            if(!user) return (
-                <div className="flex flex-col min-h-screen">
-                    <div className="flex-1 flex items-center justify-center bg-slate-100 p-4">
-                        <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center">
-                            <h1 className="text-2xl font-bold mb-6 text-blue-800">מערכת "עץ חיים"</h1>
-                            <input className="w-full border p-3 rounded-lg mb-3 text-right" placeholder="שם משתמש" value={loginData.username} onChange={e=>setLoginData({...loginData,username:e.target.value})} onKeyDown={e=>e.key==='Enter'&&doLogin()}/>
-                            <input className="w-full border p-3 rounded-lg mb-3 text-right" type="password" placeholder="סיסמה" value={loginData.password} onChange={e=>setLoginData({...loginData,password:e.target.value})} onKeyDown={e=>e.key==='Enter'&&doLogin()}/>
-                            <button onClick={doLogin} className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700">כניסה למערכת</button>
-                            {loginError && <p className="text-red-500 mt-4 text-sm">{loginError}</p>}
-                        </div>
-                    </div>
-                    <footer className="bg-slate-800 text-slate-400 text-center py-4 text-xs">פותח על ידי OrelAI <a href="mailto:ubriga@gmail.com" className="underline">ubriga@gmail.com</a></footer>
-                </div>
-            );
-
-            return (
-                <div className="flex flex-col flex-1">
-                    <header className="bg-white border-b sticky top-0 z-30 px-4 py-3 shadow-sm flex justify-between items-center">
-                        <div><span className="font-bold text-lg text-blue-900 block">עץ חיים LMS</span><span className="text-[10px] text-gray-400">by OrelAI</span></div>
-                        <nav className="flex items-center gap-4">
-                            {user.role === 'admin' && <button onClick={()=>setView(view==='admin'?'student':'admin')} className="text-sm font-bold text-blue-600">{view==='admin'?'חזרה ללומד':'ממשק מנהל'}</button>}
-                            <span className="text-xs font-bold bg-slate-100 px-2 py-1 rounded">{user.name}</span>
-                            <button onClick={handleLogout} className="text-red-500" title="יציאה">🚪</button>
-                        </nav>
-                    </header>
-                    <main className="max-w-7xl mx-auto p-4 w-full flex-1">
-                        {view === 'admin' ? <AdminPanel /> : (
-                            <div className="space-y-6">
-                                <div className="flex justify-center gap-4">
-                                    {ALL_TRACKS.map(t => <button key={t.id} onClick={()=>changeTrack(t.id)} className={`px-6 py-2 rounded-full font-bold transition ${selectedTrack.id===t.id?'bg-blue-600 text-white shadow-lg':'bg-white text-gray-600 border'}`}>{t.title}</button>)}
-                                </div>
-                                
-                                {/* כרטיסי סטטיסטיקה למעלה */}
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
-                                        <div className="text-sm text-gray-500 mb-1">התקדמות ב{activeBook.title}</div>
-                                        <div className="text-2xl font-bold text-blue-600">{stats.bookDone} / {stats.bookTotal}</div>
-                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-blue-600 h-2 rounded-full" style={{width:`${(stats.bookDone/stats.bookTotal)*100}%`}}></div></div>
-                                    </div>
-                                    <div className="bg-white p-5 rounded-xl border shadow-sm">
-                                        <div className="text-sm text-gray-500 mb-1">סיום הש"ס ({selectedTrack.title})</div>
-                                        <div className="text-2xl font-bold text-amber-600">{stats.trackDone} / {stats.trackTotal}</div>
-                                        <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-amber-500 h-2 rounded-full" style={{width:`${(stats.trackDone/stats.trackTotal)*100}%`}}></div></div>
-                                    </div>
-                                </div>
-
-                                <div className="bg-white p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row gap-3 sticky top-16 z-20">
-                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeSecId} onChange={e=>{const s=activeTrack.sections.find(x=>x.id===e.target.value);setSecId(s.id);setBookId(s.books[0].id)}}>{activeTrack.sections.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select>
-                                    <select className="border p-2 rounded-lg flex-1 bg-slate-50" value={activeBookId} onChange={e=>setBookId(e.target.value)}>{activeSec.books.map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select>
-                                </div>
-
-                                {activeBook.type === 'mishna' ? (
-                                    <MishnaBookView book={activeBook} progress={progress} toggle={toggleKey} />
-                                ) : (
-                                    <div className="bg-white p-6 rounded-xl border shadow-sm">
-                                        <div className="flex justify-between mb-4"><h2 className="font-bold text-lg">{activeBook.title}</h2><button onClick={()=>{if(confirm("לסמן את כל המסכת?"))activeBook.units.forEach(u=>toggleKey(`${activeBook.id}_${u.id}`,true))}} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ סמן הכל</button></div>
-                                        <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                                            {activeBook.units.map(u => {
+                    {tab === 'stats' ? <AdminStats /> : <AdminUserManagement users={users} fetchUsers={fetchUsers} />}\n                </div>\n            );\n        };\n\n        // --- קומפוננטות תלמיד ---\n\n        const MishnaBookView = ({ book, progress, toggle }) => {\n            const chapters = useMemo(() => {\n                const map = {};\n                book.units.forEach(u => {\n                    if(!map[u.chapterId]) map[u.chapterId] = { id: u.chapterId, title: u.chapterTitle, units: [] };\n                    map[u.chapterId].units.push(u);\n                });\n                return Object.values(map);\n            }, [book]);\n\n            const [openChapter, setOpenChapter] = useState(null);\n\n            return (\n                <div className=\"space-y-2\">\n                    {chapters.map(chapter => {\n                        const completed = chapter.units.filter(u => progress[`${book.id}_${u.id}`]).length;\n                        const isFull = completed === chapter.units.length;\n                        const isOpen = openChapter === chapter.id;\n\n                        return (\n                            <div key={chapter.id} className=\"border rounded-lg bg-white overflow-hidden\">\n                                <button onClick={() => setOpenChapter(isOpen?null:chapter.id)} className={`w-full flex justify-between p-3 hover:bg-gray-50 ${isFull?'bg-emerald-50 text-emerald-800':''}`}>\n                                    <span className=\"font-bold\">{chapter.title}</span>\n                                    <div className=\"flex gap-2 text-sm text-gray-500\">\n                                        <span>{completed}/{chapter.units.length}</span>\n                                        <span>{isOpen?'▼':'◀'}</span>\n                                    </div>\n                                </button>\n                                <div className={`chapter-content bg-slate-50 ${isOpen?'open':''}`}>\n                                    <div className=\"p-3 grid grid-cols-3 sm:grid-cols-6 gap-2\">\n                                        {chapter.units.map(u => {\n                                             const k = `${book.id}_${u.id}`;\n                                             return <button key={u.id} onClick={()=>toggle(k)} className={`p-2 rounded border text-sm ${progress[k]?'bg-emerald-600 text-white':'bg-white'}`}>{u.label.replace('משנה ','')}</button>;\n                                        })}\n                                    </div>\n                                </div>\n                            </div>\n                        );\n                    })}\n                </div>\n            );\n        };\n\n        const App = () => {\n            const [user, setUser] = useState(null);\n            const [view, setView] = useState('student');\n            const [loginData, setLoginData] = useState({username:'', password:''});\n            const [loginError, setLoginError] = useState('');\n            \n            const [selectedTrack, setSelectedTrack] = useState(ALL_TRACKS[0]);\n            const [activeSecId, setSecId] = useState(ALL_TRACKS[0].sections[0].id);\n            const [activeBookId, setBookId] = useState(ALL_TRACKS[0].sections[0].books[0].id);\n            const [progress, setProgress] = useState({});\n\n            // טעינת נתונים\n            useEffect(() => {\n                if (user) fetch(`${API_URL}/api/get_progress?user_id=${user.id}`).then(r=>r.json()).then(k=>{const p={};k.forEach(x=>p[x]=true);setProgress(p)});\n            }, [user]);\n\n            // ניהול מסלול פעיל\n            const activeTrack = selectedTrack;\n            const activeSec = activeTrack.sections.find(s=>s.id===activeSecId) || activeTrack.sections[0];\n            const activeBook = activeSec.books.find(b=>b.id===activeBookId) || activeSec.books[0];\n\n            // סטטיסטיקות\n            const stats = useMemo(() => {\n                // מקומי (מסכת)\n                const bookTotal = activeBook.units.length;\n                const bookDone = activeBook.units.filter(u => progress[`${activeBook.id}_${u.id}`]).length;\n                \n                // גלובלי (כל המסלול שנבחר)\n                const trackPrefix = selectedTrack.id === 'gemara' ? 'gb_' : 'mb_';\n                const trackTotal = selectedTrack.id === 'gemara' ? GEMARA_TOTAL : MISHNA_TOTAL;\n                // ספירה גסה של כל המפתחות שמתאימים למסלול\n                const trackDone = Object.keys(progress).filter(k => k.includes(trackPrefix)).length;\n\n                return { bookTotal, bookDone, trackTotal, trackDone };\n            }, [progress, activeBook, selectedTrack]);\n\n            const changeTrack = (tid) => {\n                const t = ALL_TRACKS.find(x=>x.id===tid);\n                setSelectedTrack(t); setSecId(t.sections[0].id); setBookId(t.sections[0].books[0].id);\n            };\n\n            const toggleKey = (k, f=null) => {\n                const ns = f!==null?f:!progress[k];\n                setProgress(p=>({...p,[k]:ns}));\n                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:k,force_state:ns})});\n            };\n\n            // גרירה\n            const [isDragging, setIsDragging] = useState(false);\n            const [dragState, setDragState] = useState(null);\n            const handleMD = (uid,d) => { if(activeBook.type==='pages'){ setIsDragging(true); setDragState(!d); toggleKey(`${activeBook.id}_${uid}`); }};\n            const handleME = (uid) => { if(isDragging && activeBook.type==='pages') toggleKey(`${activeBook.id}_${uid}`, dragState); };\n            useEffect(()=>{const u=()=>setIsDragging(false);window.addEventListener('mouseup',u);return()=>window.removeEventListener('mouseup',u)},[]);\n\n            // לוגין\n            const doLogin = () => {\n                if (!window.grecaptcha) {\n                    setLoginError(\"שגיאת טעינת reCAPTCHA\");\n                    return;\n                }\n                window.grecaptcha.ready(() => {\n                    window.grecaptcha.execute(RECAPTCHA_SITE_KEY, {action: 'login'}).then((token) => {\n                         fetch(`${API_URL}/api/login`, {\n                             method: 'POST',\n                             headers: {'Content-Type': 'application/json'},\n                             body: JSON.stringify({...loginData, recaptcha_token: token})\n                         })\n                         .then(r=>r.json())\n                         .then(d=>{if(d.ok){setUser(d.user);setLoginError('')}else setLoginError(d.error)});\n                    });\n                });\n            };\n\n            // יציאה בטוחה\n            const handleLogout = () => {\n                setUser(null);\n                setLoginData({username:'', password:''});\n            };\n\n            if(!user) return (\n                <div className=\"flex flex-col min-h-screen\">\n                    <div className=\"flex-1 flex items-center justify-center bg-slate-100 p-4\">\n                        <div className=\"bg-white p-8 rounded-2xl shadow-xl w-full max-w-md text-center\">\n                            <h1 className=\"text-2xl font-bold mb-6 text-blue-800\">מערכת \"עץ חיים\"</h1>\n                            <input className=\"w-full border p-3 rounded-lg mb-3 text-right\" placeholder=\"שם משתמש\" value={loginData.username} onChange={e=>setLoginData({...loginData,username:e.target.value})} onKeyDown={e=>e.key==='Enter'&&doLogin()}/>\n                            <input className=\"w-full border p-3 rounded-lg mb-3 text-right\" type=\"password\" placeholder=\"סיסמה\" value={loginData.password} onChange={e=>setLoginData({...loginData,password:e.target.value})} onKeyDown={e=>e.key==='Enter'&&doLogin()}/>\n                            <button onClick={doLogin} className=\"w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700\">כניסה למערכת</button>\n                            {loginError && <p className=\"text-red-500 mt-4 text-sm\">{loginError}</p>}\n                            <div className=\"text-xs text-gray-400 mt-4\">מוגן על ידי reCAPTCHA <br/>\n                                <a href=\"https://policies.google.com/privacy\" target=\"_blank\" className=\"underline\">מדיניות פרטיות</a> ו\n                                <a href=\"https://policies.google.com/terms\" target=\"_blank\" className=\"underline\">תנאי שימוש</a>\n                            </div>\n                        </div>\n                    </div>\n                    <footer className=\"bg-slate-800 text-slate-400 text-center py-4 text-xs\">פותח על ידי OrelAI <a href=\"mailto:ubriga@gmail.com\" className=\"underline\">ubriga@gmail.com</a></footer>\n                </div>\n            );\n\n            return (\n                <div className=\"flex flex-col flex-1\">\n                    <header className=\"bg-white border-b sticky top-0 z-30 px-4 py-3 shadow-sm flex justify-between items-center\">\n                        <div><span className=\"font-bold text-lg text-blue-900 block\">עץ חיים LMS</span><span className=\"text-[10px] text-gray-400\">by OrelAI</span></div>\n                        <nav className=\"flex items-center gap-4\">\n                            {user.role === 'admin' && <button onClick={()=>setView(view==='admin'?'student':'admin')} className=\"text-sm font-bold text-blue-600\">{view==='admin'?'חזרה ללומד':'ממשק מנהל'}</button>}\n                            <span className=\"text-xs font-bold bg-slate-100 px-2 py-1 rounded\">{user.name}</span>\n                            <button onClick={handleLogout} className=\"text-red-500\" title=\"יציאה\">🚪</button>\n                        </nav>\n                    </header>\n                    <main className=\"max-w-7xl mx-auto p-4 w-full flex-1\">\n                        {view === 'admin' ? <AdminPanel /> : (\n                            <div className=\"space-y-6\">\n                                <div className=\"flex justify-center gap-4\">\n                                    {ALL_TRACKS.map(t => <button key={t.id} onClick={()=>changeTrack(t.id)} className={`px-6 py-2 rounded-full font-bold transition ${selectedTrack.id===t.id?'bg-blue-600 text-white shadow-lg':'bg-white text-gray-600 border'}`}>{t.title}</button>)}\n                                </div>\n                                \n                                {/* כרטיסי סטטיסטיקה למעלה */}\n                                <div className=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n                                    <div className=\"bg-white p-5 rounded-xl border shadow-sm\">\n                                        <div className=\"text-sm text-gray-500 mb-1\">התקדמות ב{activeBook.title}</div>\n                                        <div className=\"text-2xl font-bold text-blue-600\">{stats.bookDone} / {stats.bookTotal}</div>\n                                        <div className=\"w-full bg-gray-200 h-2 rounded-full mt-2\"><div className=\"bg-blue-600 h-2 rounded-full\" style={{width:`${(stats.bookDone/stats.bookTotal)*100}%`}}></div></div>\n                                    </div>\n                                    <div className=\"bg-white p-5 rounded-xl border shadow-sm\">\n                                        <div className=\"text-sm text-gray-500 mb-1\">סיום הש\"ס ({selectedTrack.title})</div>\n                                        <div className=\"text-2xl font-bold text-amber-600\">{stats.trackDone} / {stats.trackTotal}</div>\n                                        <div className=\"w-full bg-gray-200 h-2 rounded-full mt-2\"><div className=\"bg-amber-500 h-2 rounded-full\" style={{width:`${(stats.trackDone/stats.trackTotal)*100}%`}}></div></div>\n                                    </div>\n                                </div>\n\n                                <div className=\"bg-white p-4 rounded-xl border shadow-sm flex flex-col sm:flex-row gap-3 sticky top-16 z-20\">\n                                    <select className=\"border p-2 rounded-lg flex-1 bg-slate-50\" value={activeSecId} onChange={e=>{const s=activeTrack.sections.find(x=>x.id===e.target.value);setSecId(s.id);setBookId(s.books[0].id)}}>{activeTrack.sections.map(s=><option key={s.id} value={s.id}>{s.title}</option>)}</select>\n                                    <select className=\"border p-2 rounded-lg flex-1 bg-slate-50\" value={activeBookId} onChange={e=>setBookId(e.target.value)}>{activeSec.books.map(b=><option key={b.id} value={b.id}>{b.title}</option>)}</select>\n                                </div>\n\n                                {activeBook.type === 'mishna' ? (\n                                    <MishnaBookView book={activeBook} progress={progress} toggle={toggleKey} />\n                                ) : (\n                                    <div className=\"bg-white p-6 rounded-xl border shadow-sm\">\n                                        <div className=\"flex justify-between mb-4\"><h2 className=\"font-bold text-lg\">{activeBook.title}</h2><button onClick={()=>{if(confirm(\"לסמן את כל המסכת?\"))activeBook.units.forEach(u=>toggleKey(`${activeBook.id}_${u.id}`,true))}} className=\"text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded\">✅ סמן הכל</button></div>\n                                        <div className=\"grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3\">\n                                            {activeBook.units.map(u => {
                                                 const k = `${activeBook.id}_${u.id}`; const d = progress[k];
                                                 return <button key={u.id} onMouseDown={()=>handleMD(u.id,d)} onMouseEnter={()=>handleME(u.id)} className={`page-btn p-3 rounded-lg border text-sm font-medium ${d?'bg-blue-600 text-white shadow-md':'bg-slate-50 text-gray-600'}`}>{u.label} {d&&"✓"}</button>;
                                             })}
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </main>
-                    <footer className="bg-slate-800 text-slate-400 text-center py-4 text-xs">פותח על ידי OrelAI <a href="mailto:ubriga@gmail.com" className="underline">ubriga@gmail.com</a></footer>
-                </div>
-            );
-        };
-        
-        const root = ReactDOM.createRoot(document.getElementById('root'));
-        root.render(<App />);
-    </script>
-</body>
-</html>
+                                        </div>\n                                    </div>\n                                )}\n                            </div>\n                        )}\n                    </main>\n                    <footer className=\"bg-slate-800 text-slate-400 text-center py-4 text-xs\">פותח על ידי OrelAI <a href=\"mailto:ubriga@gmail.com\" className=\"underline\">ubriga@gmail.com</a></footer>\n                </div>\n            );\n        };\n        \n        const root = ReactDOM.createRoot(document.getElementById('root'));\n        root.render(<App />);\n    </script>\n</body>\n</html>\n
