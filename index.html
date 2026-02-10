@@ -26,6 +26,16 @@
             50% { opacity: 0.8; transform: scale(0.95); }
         }
         .candle-flame { animation: candle-flicker 2s ease-in-out infinite; }
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        @keyframes slideOut {
+            from { transform: translateX(0); opacity: 1; }
+            to { transform: translateX(100%); opacity: 0; }
+        }
+        .toast-enter { animation: slideIn 0.3s ease-out; }
+        .toast-exit { animation: slideOut 0.3s ease-out; }
     </style>
 </head>
 <body class="bg-slate-50 text-gray-800 flex flex-col min-h-screen">
@@ -118,6 +128,29 @@
         // חישוב סה"כ גלובלי לכל מסלול
         const GEMARA_TOTAL = TRACK_GEMARA.sections.reduce((acc,s)=> acc + s.books.reduce((bAcc,b)=> bAcc + b.totalCount, 0), 0);
         const MISHNA_TOTAL = TRACK_MISHNA.sections.reduce((acc,s)=> acc + s.books.reduce((bAcc,b)=> bAcc + b.totalCount, 0), 0);
+
+        // --- קומפוננט Toast ---
+        const Toast = ({ message, isVisible, onClose }) => {
+            useEffect(() => {
+                if (isVisible) {
+                    const timer = setTimeout(() => {
+                        onClose();
+                    }, 3000);
+                    return () => clearTimeout(timer);
+                }
+            }, [isVisible, onClose]);
+
+            if (!isVisible) return null;
+
+            return (
+                <div className="fixed top-20 left-4 z-50 toast-enter">
+                    <div className="bg-emerald-600 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-3">
+                        <span className="text-xl">✓</span>
+                        <span className="font-bold">{message}</span>
+                    </div>
+                </div>
+            );
+        };
 
         // --- קומפוננט הקדשות ---
 
@@ -587,11 +620,62 @@
             const [activeSecId, setSecId] = useState(ALL_TRACKS[0].sections[0].id);
             const [activeBookId, setBookId] = useState(ALL_TRACKS[0].sections[0].books[0].id);
             const [progress, setProgress] = useState({});
+            const [toastMessage, setToastMessage] = useState('');
+            const [toastVisible, setToastVisible] = useState(false);
 
-            // טעינת נתונים
+            // פונקציה להצגת Toast
+            const showToast = (msg) => {
+                setToastMessage(msg);
+                setToastVisible(true);
+            };
+
+            // טעינת נתונים והמיקום האחרון
             useEffect(() => {
-                if (user) fetch(`${API_URL}/api/get_progress?user_id=${user.id}`).then(r=>r.json()).then(k=>{const p={};k.forEach(x=>p[x]=true);setProgress(p)});
+                if (user) {
+                    // טעינת התקדמות
+                    fetch(`${API_URL}/api/get_progress?user_id=${user.id}`)
+                        .then(r=>r.json())
+                        .then(k=>{const p={};k.forEach(x=>p[x]=true);setProgress(p)});
+                    
+                    // טעינת מיקום אחרון
+                    fetch(`${API_URL}/api/last_position?user_id=${user.id}`)
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.ok && data.position) {
+                                const pos = data.position;
+                                const track = ALL_TRACKS.find(t => t.id === pos.track_id);
+                                if (track) {
+                                    const section = track.sections.find(s => s.id === pos.section_id);
+                                    if (section) {
+                                        const book = section.books.find(b => b.id === pos.book_id);
+                                        if (book) {
+                                            setSelectedTrack(track);
+                                            setSecId(pos.section_id);
+                                            setBookId(pos.book_id);
+                                        }
+                                    }
+                                }
+                            }
+                        })
+                        .catch(err => console.log('No saved position found'));
+                }
             }, [user]);
+
+            // שמירת מיקום אחרון בכל שינוי
+            useEffect(() => {
+                if (user && selectedTrack && activeSecId && activeBookId) {
+                    fetch(`${API_URL}/api/last_position`, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            user_id: user.id,
+                            track_id: selectedTrack.id,
+                            section_id: activeSecId,
+                            book_id: activeBookId
+                        })
+                    });
+                }
+            }, [user, selectedTrack, activeSecId, activeBookId]);
 
             // ניהול מסלול פעיל
             const activeTrack = selectedTrack;
@@ -618,7 +702,8 @@
             const toggleKey = (k, f=null) => {
                 const ns = f!==null?f:!progress[k];
                 setProgress(p=>({...p,[k]:ns}));
-                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:k,force_state:ns})});
+                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:k,force_state:ns})})
+                    .then(() => showToast('השינויים נשמרו בהצלחה!'));
             };
 
             // גרירה
@@ -677,6 +762,7 @@
 
             return (
                 <div className="flex flex-col flex-1">
+                    <Toast message={toastMessage} isVisible={toastVisible} onClose={() => setToastVisible(false)} />
                     <header className="bg-white border-b sticky top-0 z-30 px-4 py-3 shadow-sm flex justify-between items-center">
                         <div><span className="font-bold text-lg text-blue-900 block">עץ חיים LMS</span><span className="text-[10px] text-gray-400">by OrelAI</span></div>
                         <nav className="flex items-center gap-4">
