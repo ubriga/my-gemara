@@ -487,9 +487,17 @@
                     const promises = users.map(async (u) => {
                         const res = await fetch(`${API_URL}/api/get_progress?user_id=${u.id}`);
                         const data = await res.json();
-                        const gemaraDone = data.filter(k => k.includes('gb_')).length;
-                        const mishnaDone = data.filter(k => k.includes('mb_')).length;
-                        return { ...u, gemaraDone, mishnaDone };
+                        
+                        const gCycles = data.filter(k => k.startsWith('siyum_gemara_')).length;
+                        const mCycles = data.filter(k => k.startsWith('siyum_mishna_')).length;
+                        
+                        const cgPrefix = gCycles === 0 ? '' : `c${gCycles + 1}_`;
+                        const cmPrefix = mCycles === 0 ? '' : `c${mCycles + 1}_`;
+                        
+                        const gemaraDone = data.filter(k => k.startsWith(cgPrefix + 'gb_')).length;
+                        const mishnaDone = data.filter(k => k.startsWith(cmPrefix + 'mb_')).length;
+                        
+                        return { ...u, gemaraDone, mishnaDone, gCycles, mCycles };
                     });
                     const results = await Promise.all(promises);
                     setStats(results);
@@ -508,9 +516,11 @@
                                 <tr>
                                     <th className="p-3">שם תלמיד</th>
                                     <th className="p-3 border-r">גמרא (דפים)</th>
-                                    <th className="p-3">סיום ש"ס גמרא</th>
+                                    <th className="p-3">סיום גמרא</th>
+                                    <th className="p-3 text-amber-600">מחזורי גמרא</th>
                                     <th className="p-3 border-r">משניות (יחידות)</th>
-                                    <th className="p-3">סיום ש"ס משניות</th>
+                                    <th className="p-3">סיום משניות</th>
+                                    <th className="p-3 text-amber-600">מחזורי משנה</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -520,20 +530,22 @@
                                     return (
                                         <tr key={s.id} className="border-b hover:bg-slate-50">
                                             <td className="p-3 font-medium">{s.username} <span className="text-xs text-gray-400">({s.role})</span></td>
-                                            <td className="p-3 border-r text-blue-600 font-bold">{s.gemaraDone}</td>
+                                            <td className="p-3 border-r text-blue-600 font-bold">{s.gemaraDone} / {GEMARA_TOTAL}</td>
                                             <td className="p-3">
-                                                <div className="flex items-center gap-2 w-32">
+                                                <div className="flex items-center gap-2 w-24">
                                                     <div className="flex-1 bg-gray-200 h-2 rounded-full"><div className="bg-blue-600 h-2 rounded-full" style={{width:`${Math.min(gemaraPct,100)}%`}}></div></div>
                                                     <span className="text-xs w-8">{gemaraPct}%</span>
                                                 </div>
                                             </td>
-                                            <td className="p-3 border-r text-emerald-600 font-bold">{s.mishnaDone}</td>
+                                            <td className="p-3 text-center text-amber-600 font-bold">{s.gCycles}</td>
+                                            <td className="p-3 border-r text-emerald-600 font-bold">{s.mishnaDone} / {MISHNA_TOTAL}</td>
                                             <td className="p-3">
-                                                <div className="flex items-center gap-2 w-32">
+                                                <div className="flex items-center gap-2 w-24">
                                                     <div className="flex-1 bg-gray-200 h-2 rounded-full"><div className="bg-emerald-500 h-2 rounded-full" style={{width:`${Math.min(mishnaPct,100)}%`}}></div></div>
                                                     <span className="text-xs w-8">{mishnaPct}%</span>
                                                 </div>
                                             </td>
+                                            <td className="p-3 text-center text-amber-600 font-bold">{s.mCycles}</td>
                                         </tr>
                                     );
                                 })}
@@ -567,7 +579,7 @@
 
         // --- קומפוננטות תלמיד ---
 
-        const MishnaBookView = ({ book, progress, toggle }) => {
+        const MishnaBookView = ({ book, progress, toggleKey, getActualKey }) => {
             const chapters = useMemo(() => {
                 const map = {};
                 book.units.forEach(u => {
@@ -582,16 +594,22 @@
             return (
                 <div className="space-y-2">
                     {chapters.map(chapter => {
-                        const completed = chapter.units.filter(u => progress[`${book.id}_${u.id}`]).length;
+                        const completed = chapter.units.filter(u => progress[getActualKey(`${book.id}_${u.id}`)]).length;
                         const isFull = completed === chapter.units.length;
                         const isOpen = openChapter === chapter.id;
 
                         return (
                             <div key={chapter.id} className="border rounded-lg bg-white overflow-hidden">
-                                <button onClick={() => setOpenChapter(isOpen?null:chapter.id)} className={`w-full flex justify-between p-3 hover:bg-gray-50 ${isFull?'bg-emerald-50 text-emerald-800':''}`}>
+                                <button onClick={() => setOpenChapter(isOpen?null:chapter.id)} className={`w-full flex justify-between items-center p-3 hover:bg-gray-50 ${isFull?'bg-emerald-50 text-emerald-800':''}`}>
                                     <span className="font-bold">{chapter.title}</span>
-                                    <div className="flex gap-2 text-sm text-gray-500">
+                                    <div className="flex gap-3 text-sm text-gray-500 items-center">
                                         <span>{completed}/{chapter.units.length}</span>
+                                        <button onClick={(e) => {
+                                            e.stopPropagation();
+                                            if(confirm(`לסמן את כל ${chapter.title}?`)) {
+                                                chapter.units.forEach(u => toggleKey(`${book.id}_${u.id}`, true));
+                                            }
+                                        }} className="text-xs bg-emerald-100 text-emerald-800 px-3 py-1 rounded hover:bg-emerald-200 font-bold">✅ סמן פרק</button>
                                         <span>{isOpen?'▼':'◀'}</span>
                                     </div>
                                 </button>
@@ -599,7 +617,8 @@
                                     <div className="p-3 grid grid-cols-3 sm:grid-cols-6 gap-2">
                                         {chapter.units.map(u => {
                                              const k = `${book.id}_${u.id}`;
-                                             return <button key={u.id} onClick={()=>toggle(k)} className={`p-2 rounded border text-sm ${progress[k]?'bg-emerald-600 text-white':'bg-white'}`}>{u.label.replace('משנה ','')}</button>;
+                                             const actualKey = getActualKey(k);
+                                             return <button key={u.id} onClick={()=>toggleKey(k)} className={`p-2 rounded border text-sm ${progress[actualKey]?'bg-emerald-600 text-white':'bg-white'}`}>{u.label.replace('משנה ','')}</button>;
                                         })}
                                     </div>
                                 </div>
@@ -620,13 +639,26 @@
             const [activeSecId, setSecId] = useState(ALL_TRACKS[0].sections[0].id);
             const [activeBookId, setBookId] = useState(ALL_TRACKS[0].sections[0].books[0].id);
             const [progress, setProgress] = useState({});
+            const [positionLoaded, setPositionLoaded] = useState(false);
+            
             const [toastMessage, setToastMessage] = useState('');
             const [toastVisible, setToastVisible] = useState(false);
 
-            // פונקציה להצגת Toast
             const showToast = (msg) => {
                 setToastMessage(msg);
                 setToastVisible(true);
+            };
+
+            const gemaraCycles = useMemo(() => Object.keys(progress).filter(k => k.startsWith('siyum_gemara_')).length, [progress]);
+            const mishnaCycles = useMemo(() => Object.keys(progress).filter(k => k.startsWith('siyum_mishna_')).length, [progress]);
+            
+            const currentGemaraPrefix = gemaraCycles === 0 ? '' : `c${gemaraCycles + 1}_`;
+            const currentMishnaPrefix = mishnaCycles === 0 ? '' : `c${mishnaCycles + 1}_`;
+            
+            const getActualKey = (k) => {
+                if(k.startsWith('gb_')) return currentGemaraPrefix + k;
+                if(k.startsWith('mb_')) return currentMishnaPrefix + k;
+                return k;
             };
 
             // טעינת נתונים והמיקום האחרון
@@ -657,13 +689,16 @@
                                 }
                             }
                         })
-                        .catch(err => console.log('No saved position found'));
+                        .catch(err => console.log('No saved position found'))
+                        .finally(() => {
+                            setPositionLoaded(true);
+                        });
                 }
             }, [user]);
 
-            // שמירת מיקום אחרון בכל שינוי
+            // שמירת מיקום אחרון בכל שינוי (רק אחרי שהמיקום מהשרת נטען)
             useEffect(() => {
-                if (user && selectedTrack && activeSecId && activeBookId) {
+                if (positionLoaded && user && selectedTrack && activeSecId && activeBookId) {
                     fetch(`${API_URL}/api/last_position`, {
                         method: 'POST',
                         headers: {'Content-Type': 'application/json'},
@@ -675,7 +710,7 @@
                         })
                     });
                 }
-            }, [user, selectedTrack, activeSecId, activeBookId]);
+            }, [positionLoaded, user, selectedTrack, activeSecId, activeBookId]);
 
             // ניהול מסלול פעיל
             const activeTrack = selectedTrack;
@@ -685,14 +720,16 @@
             // סטטיסטיקות
             const stats = useMemo(() => {
                 const bookTotal = activeBook.units.length;
-                const bookDone = activeBook.units.filter(u => progress[`${activeBook.id}_${u.id}`]).length;
+                const bookDone = activeBook.units.filter(u => progress[getActualKey(`${activeBook.id}_${u.id}`)]).length;
                 
                 const trackPrefix = selectedTrack.id === 'gemara' ? 'gb_' : 'mb_';
+                const actualPrefix = selectedTrack.id === 'gemara' ? currentGemaraPrefix : currentMishnaPrefix;
                 const trackTotal = selectedTrack.id === 'gemara' ? GEMARA_TOTAL : MISHNA_TOTAL;
-                const trackDone = Object.keys(progress).filter(k => k.includes(trackPrefix)).length;
+                
+                const trackDone = Object.keys(progress).filter(k => k.startsWith(actualPrefix + trackPrefix)).length;
 
                 return { bookTotal, bookDone, trackTotal, trackDone };
-            }, [progress, activeBook, selectedTrack]);
+            }, [progress, activeBook, selectedTrack, currentGemaraPrefix, currentMishnaPrefix]);
 
             const changeTrack = (tid) => {
                 const t = ALL_TRACKS.find(x=>x.id===tid);
@@ -700,9 +737,10 @@
             };
 
             const toggleKey = (k, f=null) => {
-                const ns = f!==null?f:!progress[k];
-                setProgress(p=>({...p,[k]:ns}));
-                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:k,force_state:ns})})
+                const actualKey = k.startsWith('siyum_') ? k : getActualKey(k);
+                const ns = f!==null?f:!progress[actualKey];
+                setProgress(p=>({...p,[actualKey]:ns}));
+                fetch(`${API_URL}/api/toggle_page`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({user_id:user.id,key:actualKey,force_state:ns})})
                     .then(() => showToast('השינויים נשמרו בהצלחה!'));
             };
 
@@ -736,6 +774,7 @@
             const handleLogout = () => {
                 setUser(null);
                 setLoginData({username:'', password:''});
+                setPositionLoaded(false);
             };
 
             if(!user) return (
@@ -777,6 +816,31 @@
                     <main className="max-w-7xl mx-auto p-4 w-full flex-1">
                         {view === 'admin' ? <AdminPanel /> : (
                             <div className="space-y-6">
+                            
+                                <div className="flex justify-around bg-gradient-to-r from-amber-50 to-orange-50 p-4 rounded-xl border border-amber-200 mb-6 shadow-sm">
+                                    <div className="text-center">
+                                        <div className="text-sm text-amber-800 font-bold">סיומי ש"ס גמרא</div>
+                                        <div className="text-3xl text-amber-600 font-black">{gemaraCycles}</div>
+                                    </div>
+                                    <div className="text-center">
+                                        <div className="text-sm text-amber-800 font-bold">סיומי ש"ס משניות</div>
+                                        <div className="text-3xl text-amber-600 font-black">{mishnaCycles}</div>
+                                    </div>
+                                </div>
+                                
+                                {stats.trackDone === stats.trackTotal && stats.trackTotal > 0 && (
+                                    <div className="bg-amber-100 border-2 border-amber-400 p-4 rounded-xl text-center shadow-lg my-4 animate-pulse">
+                                        <h3 className="text-xl font-bold text-amber-800 mb-2">🎉 חזק וברוך! סיימת את כל ה{selectedTrack.title}! 🎉</h3>
+                                        <button onClick={() => {
+                                            if(confirm('האם תרצה להתחיל מחזור חדש? הנתונים הקודמים יישמרו ותוכל להתחיל לסמן מחדש.')) {
+                                                toggleKey(selectedTrack.id === 'gemara' ? `siyum_gemara_${gemaraCycles+1}` : `siyum_mishna_${mishnaCycles+1}`, true);
+                                            }
+                                        }} className="bg-amber-500 text-white px-6 py-2 rounded-full font-bold hover:bg-amber-600 shadow-md">
+                                            התחל מחזור חדש
+                                        </button>
+                                    </div>
+                                )}
+
                                 <div className="flex justify-center gap-4">
                                     {ALL_TRACKS.map(t => <button key={t.id} onClick={()=>changeTrack(t.id)} className={`px-6 py-2 rounded-full font-bold transition ${selectedTrack.id===t.id?'bg-blue-600 text-white shadow-lg':'bg-white text-gray-600 border'}`}>{t.title}</button>)}
                                 </div>
@@ -788,7 +852,7 @@
                                         <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-blue-600 h-2 rounded-full" style={{width:`${(stats.bookDone/stats.bookTotal)*100}%`}}></div></div>
                                     </div>
                                     <div className="bg-white p-5 rounded-xl border shadow-sm">
-                                        <div className="text-sm text-gray-500 mb-1">סיום הש"ס ({selectedTrack.title})</div>
+                                        <div className="text-sm text-gray-500 mb-1">התקדמות במסלול ({selectedTrack.title})</div>
                                         <div className="text-2xl font-bold text-amber-600">{stats.trackDone} / {stats.trackTotal}</div>
                                         <div className="w-full bg-gray-200 h-2 rounded-full mt-2"><div className="bg-amber-500 h-2 rounded-full" style={{width:`${(stats.trackDone/stats.trackTotal)*100}%`}}></div></div>
                                     </div>
@@ -800,13 +864,18 @@
                                 </div>
 
                                 {activeBook.type === 'mishna' ? (
-                                    <MishnaBookView book={activeBook} progress={progress} toggle={toggleKey} />
+                                    <MishnaBookView book={activeBook} progress={progress} toggleKey={toggleKey} getActualKey={getActualKey} />
                                 ) : (
                                     <div className="bg-white p-6 rounded-xl border shadow-sm">
-                                        <div className="flex justify-between mb-4"><h2 className="font-bold text-lg">{activeBook.title}</h2><button onClick={()=>{if(confirm("לסמן את כל המסכת?"))activeBook.units.forEach(u=>toggleKey(`${activeBook.id}_${u.id}`,true))}} className="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">✅ סמן הכל</button></div>
+                                        <div className="flex justify-between items-center mb-4">
+                                            <h2 className="font-bold text-lg">{activeBook.title}</h2>
+                                            <button onClick={()=>{if(confirm("לסמן את כל המסכת?"))activeBook.units.forEach(u=>toggleKey(`${activeBook.id}_${u.id}`,true))}} className="text-xs bg-blue-100 text-blue-700 px-3 py-1 rounded font-bold">✅ סמן הכל</button>
+                                        </div>
                                         <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
                                             {activeBook.units.map(u => {
-                                                const k = `${activeBook.id}_${u.id}`; const d = progress[k];
+                                                const k = `${activeBook.id}_${u.id}`; 
+                                                const actualKey = getActualKey(k);
+                                                const d = progress[actualKey];
                                                 return <button key={u.id} onMouseDown={()=>handleMD(u.id,d)} onMouseEnter={()=>handleME(u.id)} className={`page-btn p-3 rounded-lg border text-sm font-medium ${d?'bg-blue-600 text-white shadow-md':'bg-slate-50 text-gray-600'}`}>{u.label} {d&&"✓"}</button>;
                                             })}
                                         </div>
